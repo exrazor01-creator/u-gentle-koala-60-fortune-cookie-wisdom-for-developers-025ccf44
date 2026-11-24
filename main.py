@@ -12,10 +12,19 @@ advice is really self-preservation dressed as courtesy.
 Gate guard: the entry must be UTF-8 text of 1 to 120 characters, a
 single line, and not only white space - the same gate the sealed
 scorer applies to /output/entry.txt. Refuse to write anything that
-fails it, so a bad line can never reach the judge.
+fails it, so a bad line can never reach the judge. Control
+characters are rejected too: the scorer reads the file as plain
+text, and an invisible control byte would make the displayed
+fortune differ from the counted one, so the gate treats any byte
+below U+0020 or DEL as a failure even when the line and length
+checks would otherwise pass.
 
 Note: the entry is written with no trailing newline, so the file
 holds exactly the 120 characters of the line and nothing else.
+A trailing newline would add a 121st character and break the
+120-character limit the scorer enforces; writing with
+Path.write_text and no "\n" keeps the byte count identical to the
+character count, since every character in the line is ASCII.
 """
 
 from pathlib import Path
@@ -30,7 +39,14 @@ MAX_CHARS = 120
 
 
 def validate(text: str) -> None:
-    """Raise SystemExit unless the text passes the scorer's gate."""
+    """Raise SystemExit unless the text passes the scorer's gate.
+
+    The gate mirrors the sealed scorer exactly: 1-120 characters,
+    exactly one line, not only white space, valid UTF-8. Control
+    characters (anything below U+0020, plus DEL) are also rejected,
+    because a stray tab or bell would survive the line check yet
+    corrupt the judge's plain-text read of the fortune.
+    """
     if not isinstance(text, str):
         raise SystemExit("entry is not text")
     if not (MIN_CHARS <= len(text) <= MAX_CHARS):
@@ -39,6 +55,8 @@ def validate(text: str) -> None:
         )
     if "\n" in text or "\r" in text:
         raise SystemExit("entry must be a single line")
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):
+        raise SystemExit("entry must not contain control characters")
     if not text.strip():
         raise SystemExit("entry must not be only white space")
     text.encode("utf-8")  # raises if the text is not valid UTF-8
